@@ -10,13 +10,11 @@ Required environment variable:
   CIRCLE_TOKEN   CircleCI personal API token
 """
 
-import pathlib
 import sys
 from datetime import date, datetime, timezone
 
 from dash import Dash, Input, Output, State, dash_table, dcc, html
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import circle_workflows as cw  # noqa: E402
 
 DEFAULT_PROJECT_SLUG = "gh/cerebrotech/domino"
