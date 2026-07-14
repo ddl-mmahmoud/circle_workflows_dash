@@ -1,0 +1,9 @@
+[project]
+name = "circle-workflows-dash"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "dash>=4.4.0",
+    "requests>=2.34.2",
+]
