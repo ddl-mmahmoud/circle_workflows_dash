@@ -22,9 +22,10 @@ import circle_workflows as cw  # noqa: E402
 logging.basicConfig(level=logging.INFO)
 _log = logging.getLogger("app.pathdebug")
 
+_log.info("all env var names: %s", sorted(os.environ.keys()))
 _log.info(
-    "env vars possibly related to app base path: %s",
-    {k: v for k, v in os.environ.items() if "DOMINO" in k.upper() or "PREFIX" in k.upper() or "APP" in k.upper()},
+    "env vars possibly related to app base path (with values): %s",
+    {k: v for k, v in os.environ.items() if "DOMINO" in k.upper() or "PREFIX" in k.upper() or "APP" in k.upper() or "RUN" in k.upper() or "PATH" in k.upper()},
 )
 
 DEFAULT_PROJECT_SLUG = "gh/cerebrotech/domino"
