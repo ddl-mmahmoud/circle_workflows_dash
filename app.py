@@ -79,7 +79,7 @@ app.layout = html.Div(
                               style={"width": "100%"}),
                 ]),
                 html.Div([
-                    html.Label("Workflow name"),
+                    html.Label("Workflow pattern"),
                     dcc.Input(id="in-workflow", type="text", value=DEFAULT_WORKFLOW_NAME,
                                placeholder="e.g. test-e2e", style={"width": "100%"}),
                 ]),
