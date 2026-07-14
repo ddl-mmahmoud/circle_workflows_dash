@@ -45,6 +45,7 @@ STATUS_PILL_STYLES = [
 ]
 
 TABLE_COLUMNS = [
+    {"name": "url", "id": "url", "presentation": "markdown"},
     {"name": "created", "id": "created"},
     {"name": "duration", "id": "duration"},
     {"name": "status", "id": "status"},
@@ -54,7 +55,6 @@ TABLE_COLUMNS = [
     {"name": "workflow_id", "id": "workflow_id"},
     {"name": "first_failed_job", "id": "first_failed_job"},
     {"name": "last_success_job", "id": "last_success_job"},
-    {"name": "url", "id": "url", "presentation": "markdown"},
 ]
 
 app = Dash(__name__, requests_pathname_prefix=os.environ.get("DOMINO_RUN_HOST_PATH", "/"))
