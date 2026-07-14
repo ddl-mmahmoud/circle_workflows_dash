@@ -10,7 +10,6 @@ Required environment variable:
   CIRCLE_TOKEN   CircleCI personal API token
 """
 
-import logging
 import os
 import sys
 from datetime import date, datetime, timezone
@@ -18,15 +17,6 @@ from datetime import date, datetime, timezone
 from dash import Dash, Input, Output, State, dash_table, dcc, html
 
 import circle_workflows as cw  # noqa: E402
-
-logging.basicConfig(level=logging.INFO)
-_log = logging.getLogger("app.pathdebug")
-
-_log.info("all env var names: %s", sorted(os.environ.keys()))
-_log.info(
-    "env vars possibly related to app base path (with values): %s",
-    {k: v for k, v in os.environ.items() if "DOMINO" in k.upper() or "PREFIX" in k.upper() or "APP" in k.upper() or "RUN" in k.upper() or "PATH" in k.upper()},
-)
 
 DEFAULT_PROJECT_SLUG = "gh/cerebrotech/domino"
 DEFAULT_WORKFLOW_NAME = "e2e"
@@ -67,19 +57,8 @@ TABLE_COLUMNS = [
     {"name": "url", "id": "url", "presentation": "markdown"},
 ]
 
-app = Dash(__name__)
+app = Dash(__name__, requests_pathname_prefix=os.environ.get("DOMINO_RUN_HOST_PATH", "/"))
 app.title = "CircleCI Workflow Search"
-
-_logged_headers = False
-
-
-@app.server.before_request
-def _log_first_request_headers():
-    global _logged_headers
-    if not _logged_headers:
-        _logged_headers = True
-        from flask import request
-        _log.info("first request path=%r headers=%r", request.path, dict(request.headers))
 
 app.layout = html.Div(
     style={"fontFamily": "sans-serif", "margin": "24px", "maxWidth": "1400px"},
