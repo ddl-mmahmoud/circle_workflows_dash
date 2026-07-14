@@ -52,7 +52,6 @@ TABLE_COLUMNS = [
     {"name": "workflow", "id": "workflow_name"},
     {"name": "branch", "id": "branch"},
     {"name": "#", "id": "pipeline_number"},
-    {"name": "workflow_id", "id": "workflow_id"},
     {"name": "first_failed_job", "id": "first_failed_job"},
     {"name": "last_success_job", "id": "last_success_job"},
 ]
