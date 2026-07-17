@@ -116,7 +116,7 @@ app.title = "CircleCI Workflow Search"
 
 def serve_layout():
     return html.Div(
-        style={"fontFamily": "sans-serif", "margin": "24px", "maxWidth": "1400px"},
+        style={"fontFamily": "sans-serif", "margin": "24px", "maxWidth": "2000px"},
         children=[
             dcc.Location(id="url", refresh=False),
             html.H2("CircleCI Workflow Search"),
