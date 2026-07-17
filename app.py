@@ -10,11 +10,17 @@ Required environment variable:
   CIRCLE_TOKEN   CircleCI personal API token
 """
 
+import json
 import os
+import re
 import sys
+import threading
+import urllib.parse
+import uuid
 from datetime import date, datetime, timezone
+from pathlib import Path
 
-from dash import Dash, Input, Output, State, dash_table, dcc, html
+from dash import Dash, Input, Output, State, dash_table, dcc, html, no_update
 
 import circle_workflows as cw  # noqa: E402
 
@@ -44,6 +50,54 @@ STATUS_PILL_STYLES = [
     for status, colors in STATUS_COLORS.items()
 ]
 
+# On-disk store for permalinked snapshots, one JSON file per snapshot, so
+# links survive process restarts and are actually shareable.
+SNAPSHOTS_DIR = Path(os.environ.get("SNAPSHOTS_DIR", Path(__file__).parent / "snapshots"))
+SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+_SNAPSHOT_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+_snapshot_write_lock = threading.Lock()
+
+
+def _snapshot_path(snapshot_id):
+    if not _SNAPSHOT_ID_RE.fullmatch(snapshot_id or ""):
+        return None
+    return SNAPSHOTS_DIR / f"{snapshot_id}.json"
+
+
+def _save_snapshot(data, summary):
+    snapshot_id = uuid.uuid4().hex
+    payload = {
+        "data": data,
+        "summary": summary,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    path = _snapshot_path(snapshot_id)
+    tmp_path = path.with_suffix(".json.tmp")
+    with _snapshot_write_lock:
+        tmp_path.write_text(json.dumps(payload))
+        tmp_path.replace(path)
+    return snapshot_id
+
+
+def _load_snapshot(snapshot_id):
+    path = _snapshot_path(snapshot_id)
+    if path is None or not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    payload["created_at"] = datetime.fromisoformat(payload["created_at"])
+    return payload
+
+SEARCH_CONTROLS_STYLE = {
+    "display": "grid",
+    "gridTemplateColumns": "repeat(4, 1fr)",
+    "gap": "12px",
+    "alignItems": "end",
+    "marginBottom": "16px",
+}
+
 TABLE_COLUMNS = [
     {"name": "url", "id": "url", "presentation": "markdown"},
     {"name": "created", "id": "created"},
@@ -62,15 +116,12 @@ app.title = "CircleCI Workflow Search"
 app.layout = html.Div(
     style={"fontFamily": "sans-serif", "margin": "24px", "maxWidth": "1400px"},
     children=[
+        dcc.Location(id="url", refresh=False),
         html.H2("CircleCI Workflow Search"),
+        html.Div(id="permalink-banner", style={"display": "none"}),
         html.Div(
-            style={
-                "display": "grid",
-                "gridTemplateColumns": "repeat(4, 1fr)",
-                "gap": "12px",
-                "alignItems": "end",
-                "marginBottom": "16px",
-            },
+            id="search-controls",
+            style=SEARCH_CONTROLS_STYLE,
             children=[
                 html.Div([
                     html.Label("Project slug"),
@@ -116,9 +167,22 @@ app.layout = html.Div(
                 ]),
             ],
         ),
+        html.Div(
+            style={
+                "display": "flex",
+                "justifyContent": "space-between",
+                "alignItems": "center",
+                "gap": "12px",
+            },
+            children=[
+                html.Div(id="out-summary", style={"color": "#444"}),
+                html.Button("Create Permalink", id="btn-permalink", n_clicks=0,
+                             style={"padding": "8px 12px", "whiteSpace": "nowrap"}),
+            ],
+        ),
+        html.Div(id="out-permalink-link", style={"margin": "8px 0 12px"}),
         dcc.Loading(
             children=[
-                html.Div(id="out-summary", style={"color": "#444", "marginBottom": "12px"}),
                 dash_table.DataTable(
                     id="out-table",
                     columns=TABLE_COLUMNS,
@@ -240,6 +304,90 @@ def run_search(_n_clicks, project, workflow, since, until, branch, exact, status
         f"found {len(results)} matching workflow run(s)."
     )
     return results, summary
+
+
+@app.callback(
+    Output("out-permalink-link", "children", allow_duplicate=True),
+    Input("btn-search", "n_clicks"),
+    prevent_initial_call=True,
+)
+def clear_permalink_on_new_search(_n_clicks):
+    return ""
+
+
+@app.callback(
+    Output("out-permalink-link", "children"),
+    Input("btn-permalink", "n_clicks"),
+    State("out-table", "data"),
+    State("out-summary", "children"),
+    State("url", "href"),
+    prevent_initial_call=True,
+)
+def create_permalink(_n_clicks, table_data, summary, href):
+    if not table_data:
+        return html.Div(
+            "Run a search before creating a permalink.",
+            style={"color": STATUS_COLORS["failed"]["fg"]},
+        )
+
+    snapshot_id = _save_snapshot(table_data, summary)
+
+    parsed = urllib.parse.urlsplit(href or "/")
+    query = urllib.parse.parse_qs(parsed.query)
+    query["snapshot"] = [snapshot_id]
+    permalink_url = urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, urllib.parse.urlencode(query, doseq=True), "")
+    )
+
+    return html.Div(
+        [
+            html.Span("Permalink: "),
+            dcc.Link(permalink_url, href=permalink_url, refresh=True, target="_blank"),
+        ],
+        style={
+            "padding": "8px 12px",
+            "backgroundColor": "#f1f3f4",
+            "borderRadius": "4px",
+            "fontFamily": "monospace",
+            "wordBreak": "break-all",
+        },
+    )
+
+
+@app.callback(
+    Output("out-table", "data", allow_duplicate=True),
+    Output("out-summary", "children", allow_duplicate=True),
+    Output("permalink-banner", "children"),
+    Output("permalink-banner", "style"),
+    Output("search-controls", "style"),
+    Input("url", "search"),
+    prevent_initial_call="initial_duplicate",
+)
+def load_from_url(search):
+    params = urllib.parse.parse_qs((search or "").lstrip("?"))
+    snapshot_id = (params.get("snapshot") or [None])[0]
+
+    snapshot = _load_snapshot(snapshot_id) if snapshot_id else None
+    if snapshot is None:
+        return no_update, no_update, "", {"display": "none"}, SEARCH_CONTROLS_STYLE
+
+    created_str = snapshot["created_at"].strftime("%Y-%m-%d %H:%M:%S UTC")
+    banner = html.Div(
+        [
+            f"\U0001f4cc Permalinked snapshot from {created_str}",
+            html.A("Start a new search", href="?",
+                    style={"marginLeft": "16px", "color": "#1565c0"}),
+        ],
+        style={
+            "backgroundColor": "#fff8e1",
+            "color": "#8a6d00",
+            "padding": "10px 14px",
+            "borderRadius": "6px",
+            "fontWeight": "600",
+            "marginBottom": "16px",
+        },
+    )
+    return snapshot["data"], snapshot["summary"], banner, {"display": "block"}, {"display": "none"}
 
 
 if __name__ == "__main__":
