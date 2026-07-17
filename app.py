@@ -64,11 +64,12 @@ def _snapshot_path(snapshot_id):
     return SNAPSHOTS_DIR / f"{snapshot_id}.json"
 
 
-def _save_snapshot(data, summary):
+def _save_snapshot(data, summary, search_params):
     snapshot_id = uuid.uuid4().hex
     payload = {
         "data": data,
         "summary": summary,
+        "search_params": search_params,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     path = _snapshot_path(snapshot_id)
@@ -325,16 +326,33 @@ def clear_permalink_on_new_search(_n_clicks):
     State("out-table", "data"),
     State("out-summary", "children"),
     State("url", "href"),
+    State("in-project", "value"),
+    State("in-workflow", "value"),
+    State("in-since", "date"),
+    State("in-until", "date"),
+    State("in-branch", "value"),
+    State("in-exact", "value"),
+    State("in-status", "value"),
     prevent_initial_call=True,
 )
-def create_permalink(_n_clicks, table_data, summary, href):
+def create_permalink(_n_clicks, table_data, summary, href, project, workflow, since, until,
+                      branch, exact, status):
     if not table_data:
         return html.Div(
             "Run a search before creating a permalink.",
             style={"color": STATUS_COLORS["failed"]["fg"]},
         )
 
-    snapshot_id = _save_snapshot(table_data, summary)
+    search_params = {
+        "project": project,
+        "workflow": workflow,
+        "since": since,
+        "until": until,
+        "branch": branch,
+        "exact": "exact" in (exact or []),
+        "status": status,
+    }
+    snapshot_id = _save_snapshot(table_data, summary, search_params)
 
     parsed = urllib.parse.urlsplit(href or "/")
     query = urllib.parse.parse_qs(parsed.query)
@@ -376,9 +394,24 @@ def load_from_url(search):
         return no_update, no_update, "", {"display": "none"}, SEARCH_CONTROLS_STYLE
 
     created_str = snapshot["created_at"].strftime("%Y-%m-%d %H:%M:%S UTC")
+    params = snapshot.get("search_params") or {}
+    param_parts = [
+        f"project={params.get('project')}",
+        f"workflow={params.get('workflow')}",
+        f"since={params.get('since')}",
+        f"until={params.get('until') or 'now'}",
+    ]
+    if params.get("branch"):
+        param_parts.append(f"branch={params['branch']}")
+    if params.get("status"):
+        param_parts.append(f"status={params['status']}")
+    if params.get("exact"):
+        param_parts.append("exact match")
+    params_str = ", ".join(param_parts)
+
     banner = html.Div(
         [
-            f"\U0001f4cc Permalinked snapshot from {created_str}",
+            f"\U0001f4cc Permalinked snapshot from {created_str} — {params_str}",
             html.A("Start a new search", href="?",
                     style={"marginLeft": "16px", "color": "#1565c0"}),
         ],
