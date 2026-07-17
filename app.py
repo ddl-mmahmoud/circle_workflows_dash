@@ -113,92 +113,96 @@ TABLE_COLUMNS = [
 app = Dash(__name__, requests_pathname_prefix=os.environ.get("DOMINO_RUN_HOST_PATH", "/"))
 app.title = "CircleCI Workflow Search"
 
-app.layout = html.Div(
-    style={"fontFamily": "sans-serif", "margin": "24px", "maxWidth": "1400px"},
-    children=[
-        dcc.Location(id="url", refresh=False),
-        html.H2("CircleCI Workflow Search"),
-        html.Div(id="permalink-banner", style={"display": "none"}),
-        html.Div(
-            id="search-controls",
-            style=SEARCH_CONTROLS_STYLE,
-            children=[
-                html.Div([
-                    html.Label("Project slug"),
-                    dcc.Input(id="in-project", type="text", value=DEFAULT_PROJECT_SLUG,
-                              style={"width": "100%"}),
-                ]),
-                html.Div([
-                    html.Label("Workflow pattern"),
-                    dcc.Input(id="in-workflow", type="text", value=DEFAULT_WORKFLOW_NAME,
-                               placeholder="e.g. test-e2e", style={"width": "100%"}),
-                ]),
-                html.Div([
-                    html.Label("Branch (optional)"),
-                    dcc.Input(id="in-branch", type="text", style={"width": "100%"}),
-                ]),
-                html.Div([
-                    html.Label("Status (optional)"),
-                    dcc.Dropdown(
-                        id="in-status",
-                        options=[{"label": s, "value": s} for s in cw.STATUSES],
-                        clearable=True,
+def serve_layout():
+    return html.Div(
+        style={"fontFamily": "sans-serif", "margin": "24px", "maxWidth": "1400px"},
+        children=[
+            dcc.Location(id="url", refresh=False),
+            html.H2("CircleCI Workflow Search"),
+            html.Div(id="permalink-banner", style={"display": "none"}),
+            html.Div(
+                id="search-controls",
+                style=SEARCH_CONTROLS_STYLE,
+                children=[
+                    html.Div([
+                        html.Label("Project slug"),
+                        dcc.Input(id="in-project", type="text", value=DEFAULT_PROJECT_SLUG,
+                                  style={"width": "100%"}),
+                    ]),
+                    html.Div([
+                        html.Label("Workflow pattern"),
+                        dcc.Input(id="in-workflow", type="text", value=DEFAULT_WORKFLOW_NAME,
+                                   placeholder="e.g. test-e2e", style={"width": "100%"}),
+                    ]),
+                    html.Div([
+                        html.Label("Branch (optional)"),
+                        dcc.Input(id="in-branch", type="text", style={"width": "100%"}),
+                    ]),
+                    html.Div([
+                        html.Label("Status (optional)"),
+                        dcc.Dropdown(
+                            id="in-status",
+                            options=[{"label": s, "value": s} for s in cw.STATUSES],
+                            clearable=True,
+                        ),
+                    ]),
+                    html.Div([
+                        html.Label("Since"),
+                        dcc.DatePickerSingle(id="in-since", display_format="YYYY-MM-DD",
+                                              date=date.today().isoformat()),
+                    ]),
+                    html.Div([
+                        html.Label("Until (optional, default: now)"),
+                        dcc.DatePickerSingle(id="in-until", display_format="YYYY-MM-DD"),
+                    ]),
+                    html.Div([
+                        dcc.Checklist(
+                            id="in-exact",
+                            options=[{"label": " Exact name match", "value": "exact"}],
+                            value=[],
+                        ),
+                    ]),
+                    html.Div([
+                        html.Button("Search", id="btn-search", n_clicks=0,
+                                     style={"width": "100%", "padding": "8px"}),
+                    ]),
+                ],
+            ),
+            html.Div(
+                style={
+                    "display": "flex",
+                    "justifyContent": "space-between",
+                    "alignItems": "center",
+                    "gap": "12px",
+                },
+                children=[
+                    html.Div(id="out-summary", style={"color": "#444"}),
+                    html.Button("Create Permalink", id="btn-permalink", n_clicks=0,
+                                 style={"padding": "8px 12px", "whiteSpace": "nowrap"}),
+                ],
+            ),
+            html.Div(id="out-permalink-link", style={"margin": "8px 0 12px"}),
+            dcc.Loading(
+                children=[
+                    dash_table.DataTable(
+                        id="out-table",
+                        columns=TABLE_COLUMNS,
+                        data=[],
+                        sort_action="native",
+                        filter_action="native",
+                        page_size=25,
+                        style_table={"overflowX": "auto", "borderCollapse": "separate"},
+                        style_cell={"textAlign": "left", "padding": "6px", "fontSize": "13px"},
+                        style_header={"fontWeight": "bold"},
+                        style_data_conditional=STATUS_PILL_STYLES,
                     ),
-                ]),
-                html.Div([
-                    html.Label("Since"),
-                    dcc.DatePickerSingle(id="in-since", display_format="YYYY-MM-DD",
-                                          date=date.today().isoformat()),
-                ]),
-                html.Div([
-                    html.Label("Until (optional, default: now)"),
-                    dcc.DatePickerSingle(id="in-until", display_format="YYYY-MM-DD"),
-                ]),
-                html.Div([
-                    dcc.Checklist(
-                        id="in-exact",
-                        options=[{"label": " Exact name match", "value": "exact"}],
-                        value=[],
-                    ),
-                ]),
-                html.Div([
-                    html.Button("Search", id="btn-search", n_clicks=0,
-                                 style={"width": "100%", "padding": "8px"}),
-                ]),
-            ],
-        ),
-        html.Div(
-            style={
-                "display": "flex",
-                "justifyContent": "space-between",
-                "alignItems": "center",
-                "gap": "12px",
-            },
-            children=[
-                html.Div(id="out-summary", style={"color": "#444"}),
-                html.Button("Create Permalink", id="btn-permalink", n_clicks=0,
-                             style={"padding": "8px 12px", "whiteSpace": "nowrap"}),
-            ],
-        ),
-        html.Div(id="out-permalink-link", style={"margin": "8px 0 12px"}),
-        dcc.Loading(
-            children=[
-                dash_table.DataTable(
-                    id="out-table",
-                    columns=TABLE_COLUMNS,
-                    data=[],
-                    sort_action="native",
-                    filter_action="native",
-                    page_size=25,
-                    style_table={"overflowX": "auto", "borderCollapse": "separate"},
-                    style_cell={"textAlign": "left", "padding": "6px", "fontSize": "13px"},
-                    style_header={"fontWeight": "bold"},
-                    style_data_conditional=STATUS_PILL_STYLES,
-                ),
-            ],
-        ),
-    ],
-)
+                ],
+            ),
+        ],
+    )
+
+
+app.layout = serve_layout
 
 
 def _dur_str(entry):
